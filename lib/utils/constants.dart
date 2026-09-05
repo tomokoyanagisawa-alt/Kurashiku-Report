@@ -5,7 +5,7 @@
 /// デプロイ手順は SETUP_GUIDE.md を参照してください。
 class ApiConstants {
   static const String gasWebAppUrl =
-      'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+      'https://script.google.com/macros/s/AKfycbw5DXz0agC0FF4BaHfShma0EMAMcR6niTGkqhCz9V_2ntv_scMRBLIAYjTT0eG3mHh7/exec';
 
   static const Duration requestTimeout = Duration(seconds: 20);
 }
