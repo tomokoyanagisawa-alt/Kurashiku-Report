@@ -26,13 +26,21 @@ class ApiResult<T> {
 /// { "action": "staff.login", "token": "...", "params": {...} }
 ///
 /// ⚠️ 重要な注意事項:
-/// Google Apps Script の Web App (doPost) は、レスポンスを直接返さず、
-/// 必ず一度 302 リダイレクトを返し、実際のレスポンス本文は
-/// リダイレクト先の script.googleusercontent.com への GET リクエストで
-/// 取得する必要がある仕組みになっている。
-/// Dartの http パッケージは、安全性の観点から POST リクエストに対する
-/// 301/302/303 リダイレクトを自動追従しないため、
-/// ここで明示的にリダイレクトを追従する処理を実装している。
+/// 1) Google Apps Script の Web App (doPost) は、レスポンスを直接返さず、
+///    必ず一度 302 リダイレクトを返し、実際のレスポンス本文は
+///    リダイレクト先の script.googleusercontent.com への GET リクエストで
+///    取得する必要がある仕組みになっている。
+///    Dartの http パッケージ(dart:io実装/Android等)は、安全性の観点から
+///    POST リクエストに対する 301/302/303 リダイレクトを自動追従しないため、
+///    ここで明示的にリダイレクトを追従する処理を実装している。
+/// 2) Web(ブラウザ)環境では、Content-Type: application/json を付けると
+///    ブラウザが「非シンプルリクエスト」と判断してCORSプリフライト
+///    (OPTIONSメソッド)を自動送信するが、GASはOPTIONSリクエストに
+///    対応していないため、ブラウザ側でCORSエラーとしてブロックされ、
+///    "ネットワークエラー"になってしまう。
+///    これを避けるため、Content-Type は "text/plain;charset=utf-8" を
+///    使用する(GAS側は postData.contents を単純にJSON.parseしているため、
+///    Content-Typeが何であっても問題なく処理できる)。
 class ApiService {
   static String? _token;
 
@@ -88,7 +96,7 @@ class ApiService {
 
       final response = await _postFollowingRedirect(
         Uri.parse(ApiConstants.gasWebAppUrl),
-        {'Content-Type': 'application/json'},
+        {'Content-Type': 'text/plain;charset=utf-8'},
         body,
       );
 
@@ -140,7 +148,7 @@ class ApiService {
 
       final response = await _postFollowingRedirect(
         Uri.parse(ApiConstants.gasWebAppUrl),
-        {'Content-Type': 'application/json'},
+        {'Content-Type': 'text/plain;charset=utf-8'},
         body,
       );
 
