@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import 'home_screen.dart';
+import 'history_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     if (success) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const HistoryScreen()),
       );
     } else {
       _showSnack(auth.errorMessage ?? 'ログインに失敗しました');
@@ -82,8 +82,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'スタッフ用 業務報告アプリ',
+                  'いつもお疲れ様です。今日の業務報告をどうぞ',
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
                 TextField(

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/work_log.dart';
+import '../providers/auth_provider.dart';
 import '../providers/work_log_provider.dart';
+import 'home_screen.dart';
+import 'login_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -58,6 +61,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  Future<void> _editLog(WorkLog log) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => HomeScreen(editLog: log)),
+    );
+    if (result == true && mounted) {
+      _load();
+    }
+  }
+
+  Future<void> _goToReport() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
+    if (result != null && mounted) {
+      _load();
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ログアウト'),
+        content: const Text('ログアウトしますか?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ログアウト')),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      await context.read<AuthProvider>().logout();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<WorkLogProvider>();
@@ -71,7 +114,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('入力履歴')),
+      appBar: AppBar(
+        title: const Text('入力履歴'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'ログアウト',
+            onPressed: _logout,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _goToReport,
+        icon: const Icon(Icons.edit_note_rounded),
+        label: const Text('業務報告する'),
+      ),
       body: Column(
         children: [
           Container(
@@ -116,29 +173,75 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           itemCount: logs.length,
                           itemBuilder: (context, index) {
                             final log = logs[index];
+                            final workDate = DateTime.tryParse(log.workDate);
+                            final dateLabel = workDate != null
+                                ? DateFormat('yyyy年M月d日(E)', 'ja_JP').format(workDate)
+                                : log.workDate;
                             return Card(
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                leading: CircleAvatar(
-                                  backgroundColor: const Color(0xFF4A86E8).withValues(alpha: 0.12),
-                                  child: Text(
-                                    log.workDate.split('-').last,
-                                    style: const TextStyle(color: Color(0xFF4A86E8), fontWeight: FontWeight.bold, fontSize: 12),
-                                  ),
-                                ),
-                                title: Text('${log.customerName}様', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Column(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('${log.startTime} 〜 ${log.endTime}(休憩${log.breakHours}h・延長${log.extraHours}h)'),
-                                    Text('実作業 ${log.workHours}h ・ 交通費 ${log.roundTripFare.toStringAsFixed(0)}円',
-                                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                    ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                      leading: CircleAvatar(
+                                        backgroundColor: const Color(0xFF4A86E8).withValues(alpha: 0.12),
+                                        child: Text(
+                                          workDate != null ? workDate.day.toString() : '?',
+                                          style: const TextStyle(color: Color(0xFF4A86E8), fontWeight: FontWeight.bold, fontSize: 14),
+                                        ),
+                                      ),
+                                      title: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(dateLabel,
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                          ),
+                                          if (log.revised)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.orange.shade50,
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: Colors.orange.shade300),
+                                              ),
+                                              child: Text('修正済み',
+                                                  style: TextStyle(fontSize: 10, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                            ),
+                                        ],
+                                      ),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(height: 2),
+                                          Text('${log.customerName}様', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          Text('${log.startTime} 〜 ${log.endTime}(休憩${log.breakHours}h・延長${log.extraHours}h)'),
+                                          Text('総労働時間 ${log.workHours}h ・ 交通費 ${log.roundTripFare.toStringAsFixed(0)}円',
+                                              style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                        ],
+                                      ),
+                                      isThreeLine: true,
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8, bottom: 4),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          TextButton.icon(
+                                            onPressed: () => _editLog(log),
+                                            icon: const Icon(Icons.edit_outlined, size: 18),
+                                            label: const Text('修正・再送信'),
+                                          ),
+                                          TextButton.icon(
+                                            onPressed: () => _confirmDelete(log),
+                                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                                            label: const Text('削除', style: TextStyle(color: Colors.redAccent)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
-                                ),
-                                isThreeLine: true,
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                  onPressed: () => _confirmDelete(log),
                                 ),
                               ),
                             );

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/customer.dart';
 import '../models/station_route.dart';
+import '../models/work_log.dart';
 import '../providers/auth_provider.dart';
 import '../providers/work_log_provider.dart';
 import '../widgets/station_route_dialog.dart';
@@ -10,7 +11,10 @@ import 'history_screen.dart';
 import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// 修正・再送信の場合、対象のWorkLogを渡す。nullの場合は新規登録画面として動作する。
+  final WorkLog? editLog;
+
+  const HomeScreen({super.key, this.editLog});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -28,10 +32,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isSubmitting = false;
 
+  bool get _isEditing => widget.editLog != null;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadInitialData());
+  }
+
+  TimeOfDay? _parseTimeOfDay(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  void _prefillFromEditLog() {
+    final log = widget.editLog;
+    if (log == null) return;
+    setState(() {
+      _workDate = DateTime.tryParse(log.workDate) ?? DateTime.now();
+      _startTime = _parseTimeOfDay(log.startTime);
+      _endTime = _parseTimeOfDay(log.endTime);
+      _breakHours = log.breakHours.toDouble();
+      _extraHours = log.extraHours.toDouble();
+      _noteController.text = log.note;
+    });
   }
 
   @override
@@ -46,6 +74,32 @@ class _HomeScreenState extends State<HomeScreen> {
       provider.loadCustomers(),
       provider.loadStationRoutes(),
     ]);
+    if (!mounted) return;
+    if (_isEditing) {
+      _prefillFromEditLog();
+      final log = widget.editLog!;
+      // 顧客・駅ペアの選択状態を、読み込んだ一覧の中から一致するものに設定する
+      Customer? matchedCustomer;
+      for (final c in provider.customers) {
+        if (c.customerId == log.customerId) {
+          matchedCustomer = c;
+          break;
+        }
+      }
+      StationRoute? matchedRoute;
+      if (log.fromStation.isNotEmpty && log.toStation.isNotEmpty) {
+        for (final r in provider.stationRoutes) {
+          if (r.fromStation == log.fromStation && r.toStation == log.toStation) {
+            matchedRoute = r;
+            break;
+          }
+        }
+      }
+      setState(() {
+        _selectedCustomer = matchedCustomer;
+        _selectedRoute = matchedRoute;
+      });
+    }
   }
 
   Future<void> _pickDate() async {
@@ -81,12 +135,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$h:$m';
   }
 
+  // 実作業時間は「開始時刻・終了時刻・休憩時間」の3要素のみから計算する。
+  // 終了時刻は延長時間も含めて実際に終了した時刻を入力してもらう運用のため、
+  // 延長時間(_extraHours)は記録用の参考値であり、この計算には含めない。
   double? get _estimatedWorkHours {
     if (_startTime == null || _endTime == null) return null;
     final startMin = _startTime!.hour * 60 + _startTime!.minute;
     var endMin = _endTime!.hour * 60 + _endTime!.minute;
     if (endMin < startMin) endMin += 24 * 60;
-    final total = (endMin - startMin) / 60.0 - _breakHours + _extraHours;
+    final total = (endMin - startMin) / 60.0 - _breakHours;
     return double.parse(total.toStringAsFixed(2));
   }
 
@@ -121,33 +178,48 @@ class _HomeScreenState extends State<HomeScreen> {
     final provider = context.read<WorkLogProvider>();
     final dateStr = DateFormat('yyyy-MM-dd').format(_workDate);
 
-    final result = await provider.addWorkLog(
-      workDate: dateStr,
-      customerId: _selectedCustomer!.customerId,
-      startTime: _formatTime(_startTime!),
-      endTime: _formatTime(_endTime!),
-      breakHours: _breakHours,
-      extraHours: _extraHours,
-      roundTripFare: _selectedRoute?.roundTripFare ?? 0,
-      fromStation: _selectedRoute?.fromStation ?? '',
-      toStation: _selectedRoute?.toStation ?? '',
-      note: _noteController.text.trim(),
-    );
+    bool success;
+    if (_isEditing) {
+      success = await provider.updateWorkLog(
+        workId: widget.editLog!.workId,
+        customerId: _selectedCustomer!.customerId,
+        startTime: _formatTime(_startTime!),
+        endTime: _formatTime(_endTime!),
+        breakHours: _breakHours,
+        extraHours: _extraHours,
+        roundTripFare: _selectedRoute?.roundTripFare ?? 0,
+        fromStation: _selectedRoute?.fromStation ?? '',
+        toStation: _selectedRoute?.toStation ?? '',
+        note: _noteController.text.trim(),
+      );
+    } else {
+      final result = await provider.addWorkLog(
+        workDate: dateStr,
+        customerId: _selectedCustomer!.customerId,
+        startTime: _formatTime(_startTime!),
+        endTime: _formatTime(_endTime!),
+        breakHours: _breakHours,
+        extraHours: _extraHours,
+        roundTripFare: _selectedRoute?.roundTripFare ?? 0,
+        fromStation: _selectedRoute?.fromStation ?? '',
+        toStation: _selectedRoute?.toStation ?? '',
+        note: _noteController.text.trim(),
+      );
+      success = result != null;
+    }
 
     setState(() => _isSubmitting = false);
 
     if (!mounted) return;
-    if (result != null) {
-      _showSnack('業務報告を送信しました!お疲れ様でした', success: true);
-      setState(() {
-        _selectedCustomer = null;
-        _startTime = null;
-        _endTime = null;
-        _breakHours = 0;
-        _extraHours = 0;
-        _selectedRoute = null;
-        _noteController.clear();
-      });
+    if (success) {
+      _showSnack(
+        _isEditing ? '業務報告を修正して再送信しました' : '業務報告を送信しました!お疲れ様でした',
+        success: true,
+      );
+      // 送信後は自動的に入力履歴画面へ戻る(本画面は常に入力履歴画面から開くため)
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
     } else {
       _showSnack(provider.errorMessage ?? '送信に失敗しました');
     }
@@ -193,21 +265,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('本日の業務報告'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: '過去の履歴',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HistoryScreen()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'ログアウト',
-            onPressed: _logout,
-          ),
-        ],
+        title: Text(_isEditing ? '業務報告の修正' : '本日の業務報告'),
+        actions: _isEditing
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(Icons.history),
+                  tooltip: '過去の履歴',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'ログアウト',
+                  onPressed: _logout,
+                ),
+              ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadInitialData,
@@ -296,6 +370,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '※終了時刻は、延長時間も含めて実際に終了した時刻を入力してください',
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                  ),
                   const SizedBox(height: 14),
                   Row(
                     children: [
@@ -310,13 +389,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _numberStepperField(
-                          label: '延長時間(H)',
+                          label: '延長時間(H・記録用)',
                           value: _extraHours,
                           icon: Icons.more_time_rounded,
                           onChanged: (v) => setState(() => _extraHours = v),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '※延長時間は記録用の参考値です(総労働時間の計算には含まれません。終了時刻に反映してください)',
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
                   ),
                   if (_estimatedWorkHours != null) ...[
                     const SizedBox(height: 12),
@@ -328,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        '実作業時間(延長込み): ${_estimatedWorkHours!.toStringAsFixed(2)} 時間',
+                        '総労働時間(開始・休憩・終了から算出): ${_estimatedWorkHours!.toStringAsFixed(2)} 時間',
                         style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A86E8)),
                       ),
                     ),
@@ -379,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       width: 22, height: 22,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                     )
-                  : const Text('送信する'),
+                  : Text(_isEditing ? '修正して再送信する' : '送信する'),
             ),
             const SizedBox(height: 20),
           ],

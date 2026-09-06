@@ -21,12 +21,20 @@ class _StationRouteDialogState extends State<StationRouteDialog> {
   bool _isOpeningYahoo = false;
 
   @override
+  void initState() {
+    super.initState();
+    _fareController.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _fromController.dispose();
     _toController.dispose();
     _fareController.dispose();
     super.dispose();
   }
+
+  num? get _oneWayFare => num.tryParse(_fareController.text.trim());
 
   Future<void> _openYahooTransit() async {
     if (_fromController.text.trim().isEmpty ||
@@ -68,15 +76,16 @@ class _StationRouteDialogState extends State<StationRouteDialog> {
       _showSnack('出発駅と到着駅を入力してください');
       return;
     }
-    final fare = num.tryParse(fareText);
-    if (fare == null || fare < 0) {
-      _showSnack('往復金額を正しく入力してください');
+    final oneWayFare = num.tryParse(fareText);
+    if (oneWayFare == null || oneWayFare < 0) {
+      _showSnack('片道金額を正しく入力してください');
       return;
     }
 
     setState(() => _isSaving = true);
     final provider = context.read<WorkLogProvider>();
-    final success = await provider.addStationRoute(from, to, fare);
+    // 片道金額を渡すと、サーバー側で自動的に2倍にして往復金額として登録される
+    final success = await provider.addStationRoute(from, to, oneWayFare);
     setState(() => _isSaving = false);
 
     if (!mounted) return;
@@ -137,11 +146,27 @@ class _StationRouteDialogState extends State<StationRouteDialog> {
               controller: _fareController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: '往復金額(円)',
+                labelText: '片道金額(円)',
+                helperText: 'Yahoo!路線情報に表示された片道料金をそのまま入力してください',
                 prefixIcon: Icon(Icons.payments_outlined),
                 suffixText: '円',
               ),
             ),
+            if (_oneWayFare != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A86E8).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '往復金額(自動計算): ${(_oneWayFare! * 2).toStringAsFixed(0)}円',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4A86E8)),
+                ),
+              ),
+            ],
           ],
         ),
       ),

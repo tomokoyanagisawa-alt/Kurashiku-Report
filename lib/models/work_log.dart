@@ -14,6 +14,7 @@ class WorkLog {
   final String fromStation;
   final String toStation;
   final String note;
+  final bool revised;
 
   WorkLog({
     required this.workId,
@@ -31,6 +32,7 @@ class WorkLog {
     required this.fromStation,
     required this.toStation,
     required this.note,
+    this.revised = false,
   });
 
   factory WorkLog.fromJson(Map<String, dynamic> json) {
@@ -50,6 +52,7 @@ class WorkLog {
       fromStation: json['fromStation']?.toString() ?? '',
       toStation: json['toStation']?.toString() ?? '',
       note: json['note']?.toString() ?? '',
+      revised: json['revised'] == true,
     );
   }
 }

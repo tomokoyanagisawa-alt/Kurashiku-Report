@@ -52,12 +52,14 @@ class WorkLogProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [oneWayFare] 片道金額(Yahoo!路線情報に表示される片道料金をそのまま入力できる)。
+  /// サーバー側で自動的に2倍にして往復金額として保存する(手計算による2倍間違いを防止)。
   Future<bool> addStationRoute(
-      String fromStation, String toStation, num fare) async {
+      String fromStation, String toStation, num oneWayFare) async {
     final result = await ApiService.call('staff.addStationRoute', params: {
       'fromStation': fromStation,
       'toStation': toStation,
-      'roundTripFare': fare,
+      'oneWayFare': oneWayFare,
     });
     if (result.ok) {
       await loadStationRoutes();
