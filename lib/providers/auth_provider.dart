@@ -8,6 +8,10 @@ import '../utils/constants.dart';
 class AuthProvider extends ChangeNotifier {
   bool _isLoggedIn = false;
   bool _isLoading = true; // 起動時の自動ログイン確認中
+  // tryAutoLogin() 実行中かどうか。SESSION_EXPIRED のグローバル検知ハンドラが、
+  // 起動時の自動ログイン確認中に発火した場合は SplashScreen 自身が画面遷移を
+  // 行うため、二重に遷移させないようにするためのガードとして使用する。
+  bool _isRestoring = true;
   String? _staffId;
   String? _staffName;
   String? _loginId;
@@ -15,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isLoggedIn => _isLoggedIn;
   bool get isLoading => _isLoading;
+  bool get isRestoring => _isRestoring;
   String? get staffId => _staffId;
   String? get staffName => _staffName;
   String? get loginId => _loginId;
@@ -23,6 +28,7 @@ class AuthProvider extends ChangeNotifier {
   /// アプリ起動時に呼び出す:保存済みトークン or ID/PWで自動ログインを試みる
   Future<void> tryAutoLogin() async {
     _isLoading = true;
+    _isRestoring = true;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
@@ -41,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
         _staffName = result.data!['name']?.toString();
         _loginId = result.data!['loginId']?.toString();
         _isLoading = false;
+        _isRestoring = false;
         notifyListeners();
         return;
       }
@@ -51,12 +58,14 @@ class AuthProvider extends ChangeNotifier {
       final success = await login(savedLoginId, savedPassword, remember: true, silent: true);
       if (success) {
         _isLoading = false;
+        _isRestoring = false;
         notifyListeners();
         return;
       }
     }
 
     _isLoading = false;
+    _isRestoring = false;
     _isLoggedIn = false;
     notifyListeners();
   }
@@ -109,6 +118,19 @@ class AuthProvider extends ChangeNotifier {
   /// ログアウト(保存情報もすべて削除)
   Future<void> logout() async {
     await ApiService.call('logout', requireAuth: true);
+    await forceLogoutLocally();
+  }
+
+  /// サーバー側で既にセッションが無効化されている場合(パスワード変更検知による
+  /// 強制ログアウトや、トークン期限切れなど)に、サーバーへの logout 呼び出しを
+  /// 行わずにローカルの状態だけをクリアする。
+  /// (無効化済みのトークンで logout を呼んでもエラーになるだけで無意味なため)
+  ///
+  /// このアプリは「保存済みID/PWによる自動ログイン」方式のため、
+  /// savedLoginId/savedPassword を削除しないと次回起動時に古いパスワードで
+  /// 再度自動ログインが試みられてしまう。そのため、通常のログアウトと同様に
+  /// 保存情報もすべて削除する。
+  Future<void> forceLogoutLocally() async {
     ApiService.setToken(null);
 
     final prefs = await SharedPreferences.getInstance();

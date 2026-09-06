@@ -4,7 +4,11 @@ import '../providers/auth_provider.dart';
 import 'history_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  // パスワード変更等によりサーバー側で強制的にログアウトさせられた際に、
+  // その理由をユーザーに伝えるためのメッセージ(通常のログイン画面表示時は null)。
+  final String? sessionExpiredMessage;
+
+  const LoginScreen({super.key, this.sessionExpiredMessage});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -15,6 +19,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sessionExpiredMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showSnack(widget.sessionExpiredMessage!, isWarning: true);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -48,9 +63,13 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showSnack(String message) {
+  void _showSnack(String message, {bool isWarning = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red.shade600),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isWarning ? Colors.orange.shade700 : Colors.red.shade600,
+        duration: const Duration(seconds: 4),
+      ),
     );
   }
 

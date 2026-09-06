@@ -44,11 +44,30 @@ class ApiResult<T> {
 class ApiService {
   static String? _token;
 
+  // パスワード変更等によりサーバー側でセッションが強制的に無効化された(SESSION_EXPIRED)
+  // ことを検知した際に呼び出されるコールバック。main.dart 側で登録し、
+  // アプリ内のどの画面からでもログイン画面へ強制的に戻す処理を行う。
+  static void Function()? onSessionExpired;
+
+  // 同じセッション切れを何度も通知して多重にログイン画面へ遷移させないためのフラグ。
+  // 新しいトークンがセットされた(再ログインした)タイミングでリセットする。
+  static bool _sessionExpiredNotified = false;
+
   static void setToken(String? token) {
     _token = token;
+    if (token != null) {
+      _sessionExpiredNotified = false;
+    }
   }
 
   static String? get token => _token;
+
+  static void _notifySessionExpiredIfNeeded(String? code) {
+    if (code == 'SESSION_EXPIRED' && !_sessionExpiredNotified) {
+      _sessionExpiredNotified = true;
+      onSessionExpired?.call();
+    }
+  }
 
   /// POSTでリクエストし、302リダイレクトが返ってきた場合は
   /// Location先へGETリクエストして最終的なレスポンスを取得する
@@ -112,9 +131,11 @@ class ApiService {
       if (json['ok'] == true) {
         return ApiResult.success(json['data'] as Map<String, dynamic>?);
       } else {
+        final code = json['code']?.toString();
+        _notifySessionExpiredIfNeeded(code);
         return ApiResult.failure(
           json['error']?.toString() ?? '不明なエラーが発生しました',
-          json['code']?.toString(),
+          code,
         );
       }
     } on FormatException {
@@ -164,9 +185,11 @@ class ApiService {
       if (json['ok'] == true) {
         return ApiResult.success(json['data'] as List<dynamic>? ?? []);
       } else {
+        final code = json['code']?.toString();
+        _notifySessionExpiredIfNeeded(code);
         return ApiResult.failure(
           json['error']?.toString() ?? '不明なエラーが発生しました',
-          json['code']?.toString(),
+          code,
         );
       }
     } catch (e) {
