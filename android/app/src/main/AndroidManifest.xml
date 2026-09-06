@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="kurashiku_report"
+        android:label="Kurashiku Report"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -43,3 +43,6 @@
         </intent>
     </queries>
 </manifest>
+
+
+
