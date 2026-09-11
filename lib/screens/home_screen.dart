@@ -75,6 +75,14 @@ class _HomeScreenState extends State<HomeScreen> {
       provider.loadStationRoutes(),
     ]);
     if (!mounted) return;
+    // お客様一覧の取得に失敗した場合、これまでは静かに空リストのままになり、
+    // 「プルダウンが反応しない(選択肢0件でFlutterが自動的に無効化する)」という
+    // わかりにくい症状になっていた。エラーを検知してユーザーに明示的に表示する。
+    if (provider.customers.isEmpty && provider.errorMessage != null) {
+      _showSnack('お客様一覧の取得に失敗しました: ${provider.errorMessage}');
+    } else if (provider.customers.isEmpty) {
+      _showSnack('担当のお客様が登録されていません。管理者にお問い合わせください');
+    }
     if (_isEditing) {
       _prefillFromEditLog();
       final log = widget.editLog!;
